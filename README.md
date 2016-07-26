@@ -2,7 +2,8 @@ Prototyping Urban Heat Islands Interface with Postgis
 ------------------
 
 Run the following to get started
-** This does rely on some postgis tables to get started**
+
+**This does rely on some postgis tables to get started**
 
 ```
 
