@@ -1,0 +1,21 @@
+{
+  "name": "HeatIslandExample",
+  "authors": [
+    "nathanhilbert <nathanhilbert@gmail.com>"
+  ],
+  "description": "Prototype of Urban Heat Island Interface",
+  "main": "",
+  "license": "MIT",
+  "homepage": "",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "EasyAutocomplete": "^1.3.5",
+    "jquery-ui": "^1.12.0"
+  }
+}
