@@ -1,0 +1,66 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <title>City Select</title>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <link rel="shortcut icon" type="image/x-icon" href="docs/images/favicon.ico" />
+
+    <link rel="stylesheet" href="bower_components/jquery-ui/themes/smoothness/jquery-ui.min.css">
+
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script type="text/javascript" src="bower_components/EasyAutocomplete/dist/jquery.easy-autocomplete.min.js"></script>
+    <script src="bower_components/jquery-ui/jquery-ui.min.js"></script>
+
+
+    <style>
+        #map {
+            width:1200px;
+            height: 400px;
+        }
+    </style>
+    
+</head>
+<body>
+
+
+<div id="jobslist">Loading...
+</div>
+
+
+<script type="text/javascript">
+
+    $(document).ready(function(){
+        $.ajax({
+          type: "POST",
+          url: "/jobs",
+          data: {},
+          success: function(response){
+            $("#jobslist").html("");
+            $.each(response['data'], function(k,v){
+                console.log(v);
+                console.log(k);
+                var lines = "<p><a href='/job?jobid=" + v['id'] + "'>" + v['id'] + "</a></p>"
+                $("#jobslist").append(lines);
+            });
+
+          },
+          dataType: 'json'
+        });
+
+       
+
+    });
+
+
+
+</script>
+
+
+
+</body>
+</html>

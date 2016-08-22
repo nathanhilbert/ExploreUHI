@@ -12,9 +12,11 @@ import tornado.autoreload
 
 from bokeh.plotting import figure
 from bokeh.embed import components
+from sqlalchemy import create_engine
+
 
 from dateutil.parser import parse as dateparser
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 
 import psycopg2
@@ -27,6 +29,8 @@ from time import time
 
 import urllib
 
+from dataprocessors import processor
+
 
 
 class IndexHandler(tornado.web.RequestHandler):
@@ -34,24 +38,31 @@ class IndexHandler(tornado.web.RequestHandler):
     def get(self):
         self.render('index.html')
 
+class DaymetMap(tornado.web.RequestHandler):
+    """Regular HTTP handler to serve the ping page"""
+    def get(self):
+        self.render('daymetmap.html')
+
+
+class JobSubmit(tornado.web.RequestHandler):
+    def post(self):
+        theargs = self.request.arguments
+        processor.apply_async(args=(theargs,))
+        print theargs
+        # print self.get_body_argument("data")
+        # mydata = self.get_arguments("data")
+        self.write(theargs)
+    def get(self):
+        self.write({"jobs": {}})
+
 class SearchCitiesHandler(tornado.web.RequestHandler):
     def get(self):
         q = self.get_argument('term') 
         q = "%%" + q.lower() + "%%"
         db = psycopg2.connect(dbname="urbis", user="postgres", password="postgres", host="localhost")
         cursor = db.cursor()
-        cursor.execute("""SELECT 
-              neurban.id as urbanid, 
-                (array_agg(
-                  tplace.name || ', ' || tstates.name order by St_Area(tplace.geom) desc
-                ))[1] as placename
-            FROM 
-              public.natearth_urbanareas_10m as neurban, 
-              public.tigerlineplaces as tplace,
-              public.tigerlinestates as tstates
-             WHERE St_Intersects(neurban.geom, tplace.geom) AND tplace.statefp=tstates.statefp AND 
-             LOWER(tplace.name) LIKE %s
-             GROUP BY neurban.id ORDER BY placename LIMIT 20""", (q,))
+        cursor.execute("""
+            SELECT placeid, label FROM urbanclusters.cityoptions WHERE LOWER(label) LIKE %s LIMIT 20""", (q,))
 
         result = {'data': []}
         for r in cursor:
@@ -187,6 +198,99 @@ class GetBokeh(tornado.web.RequestHandler):
             })
         
 
+class JobsViewer(tornado.web.RequestHandler):
+    """docstring for ClassName"""
+
+    def get(self):
+        self.render('jobs.html')
+    def post(self):
+
+        APPPOSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbisapp'
+
+        appengine = create_engine(APPPOSTGRESURI)
+        sql = """SELECT id, status FROM jobs"""
+        result = appengine.execute(sql)
+        setresult = []
+        for r in result:
+            setresult.append({'id':r[0], 'status':r[1]})
+        self.write({'data':setresult})
+
+
+
+
+class ResultViewer(tornado.web.RequestHandler):
+    """docstring for ClassName"""
+    def get(self):
+        self.render('results.html')
+    def post(self):
+        jobid = self.get_argument('jobid') 
+
+        APPPOSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbisapp'
+
+        appengine = create_engine(APPPOSTGRESURI)
+        sql = """SELECT id, inputdata, results  FROM jobs WHERE id={0}""".format(jobid)
+        result = appengine.execute(sql)
+        resultrow = result.first()
+        resultobj = resultrow[2]
+        # resultobj = json.loads(resultrow[2])
+        # print resultobj
+
+        geojson =   { "type": "FeatureCollection",
+            "features": [
+                json.loads(resultobj['info']['urbangeom']),
+                json.loads(resultobj['info']['buffergeom'])
+               ],
+                'crs': {
+                  'type': 'name',
+                  'properties': {
+                      'name': 'urn:ogc:def:crs:EPSG::3857'
+                    }
+                  }
+             }
+
+
+        p1 = figure(title="TempMin", 
+                 x_axis_type="datetime",
+                  plot_width=1200, 
+                  plot_height=500)
+        p1.xaxis.axis_label = 'Date'
+        p1.yaxis.axis_label = 'MinDailyTemp'
+
+        umeanfloat = [float(x) for x in resultobj["daymetresults"]["urbanextentresults"]['tmin']['mean']]
+        bmeanfloat = [float(x) for x in resultobj["daymetresults"]["bufferextentresults"]['tmin']['mean']]
+        print umeanfloat
+        print bmeanfloat
+
+        datearray = []
+        for d in resultobj["daymetresults"]['daymetdates']:
+            ds = d.split("-")
+            datearray.append(datetime(int(ds[0]), 1, 1) + timedelta(int(ds[1]) - 1))
+
+
+        p1.line(datearray, umeanfloat , color='#A6CEE3', legend='Urban')
+        p1.line(datearray, bmeanfloat ,color='#B2DF8A', legend='Buffer')
+        # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmax, 0.2, 0.01, line_color="black")
+        # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmin, 0.2, 0.01, line_color="black")
+        # p1.segment(xdata, ustdmax, xdata, uydata, line_width=2, line_color="black")
+        # p1.segment(xdata, ustdmin, xdata, uydata, line_width=2, line_color="black")
+        # p1.line(datetime(IBM['date']), IBM['adj_close'], color='#33A02C', legend='IBM')
+        # p1.line(datetime(MSFT['date']), MSFT['adj_close'], color='#FB9A99', legend='MSFT')
+
+        p1.legend.location = "top_left"
+
+        # output_notebook()
+
+
+        script, div = components(p1)
+
+
+        self.write({'inputdata':resultrow[1],
+                    'geojson':geojson,
+                    'bokeh':{
+                        'div': div,
+                        'script': script
+                    }})
+
 
 
 
@@ -197,7 +301,11 @@ if __name__ == "__main__":
     # Create application
     app = tornado.web.Application(
             [(r"/", IndexHandler),
+            (r"/daymetmap", DaymetMap),
             (r"/searchcities", SearchCitiesHandler),
+            (r"/jobsubmit", JobSubmit),
+            (r"/jobs", JobsViewer),
+            (r"/job", ResultViewer),
             (r"/geturban", GetUrbanGeojson),
             (r"/getbokeh", GetBokeh),
             (r'/bower_components/(.*)', tornado.web.StaticFileHandler, {'path': os.path.join(os.path.dirname(__file__), "bower_components"),}),]
@@ -208,6 +316,8 @@ if __name__ == "__main__":
 
     tornado.autoreload.start(io_loop=None, check_time=500)
     tornado.autoreload.watch('index.html')
+    tornado.autoreload.watch('jobs.html')
+    tornado.autoreload.watch('results.html')
 
     tornado.ioloop.IOLoop.instance().start()
 

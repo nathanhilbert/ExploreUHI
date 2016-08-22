@@ -3,16 +3,14 @@
 <html>
 <head>
     
-    <title>WMS example - Leaflet</title>
+    <title>City Select</title>
 
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <link rel="shortcut icon" type="image/x-icon" href="docs/images/favicon.ico" />
 
-    <link rel="stylesheet" href="https://npmcdn.com/leaflet@1.0.0-rc.2/dist/leaflet.css" />
     <link rel="stylesheet" href="bower_components/jquery-ui/themes/smoothness/jquery-ui.min.css">
-    <script src="https://npmcdn.com/leaflet@1.0.0-rc.2/dist/leaflet.js"></script>
 
     <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <script type="text/javascript" src="bower_components/EasyAutocomplete/dist/jquery.easy-autocomplete.min.js"></script>
@@ -20,8 +18,6 @@
 
     <link rel="stylesheet" href="bower_components/EasyAutocomplete/dist/easy-autocomplete.min.css" />
 
-    <script src="http://cdn.pydata.org/bokeh/release/bokeh-0.12.0.min.js"></script>
-     <link rel="stylesheet" href="http://cdn.pydata.org/bokeh/release/bokeh-0.12.0.min.css">
 
     <style>
         #map {
@@ -33,65 +29,51 @@
 </head>
 <body>
 
+<form id="citydata" name="citydata">
+<p>1. <strong>Select City:</strong> <input type="text" plcaeholder="Cleveland, TN" name="citiesselect" id="citiesselect"/></p>
+<p>
+    2. <strong>Buffer: </strong>
+    <p>As percentage of urban area: <input placeholder=".35" type="number" name="extentbuffer" id="extentbuffer" /></p>
+    <p>As fixed distance for all (meters): <input placeholder="5000" type="number" name="fixedbuffer" id="fixedbuffer" /></p>
+</p>
+<p>3. <strong>Urban Definition:</strong> <select id="urbandef" name="urbandef">
+                          <option value="grump">GRUMP</option>
+                          <option value="landscan">Landscan</option>
+                          <option value="naturalearth">Natural Earth</option>
+                        </select>
+</p>
 
-<p>Select City<input type="text" name="citiesselect" id="citiesselect"/></p>
-<p>Date: <div type="text" id="datepicker"></div></p>
-<a id="daybefore">Previous Day</a>
-<a id="dayafter">Next Day</a>
+<h4>Optional Info</h4>
+<p>4. <strong>Calculate the population:</strong><br>
+    <input type="checkbox" name="landscanpopulation" value="landscanpopulation">Landscan Population<br>
+    <input type="checkbox" name="grump2000" value="grump2000">GRUMP 2000<br>
+    <input type="checkbox" name="grump2005" value="grump2005">GRUMP 2005<br>
+    <input type="checkbox" name="grump2010" value="grump2010">GRUMP 2010<br>
+    <input type="checkbox" name="grump2015" value="grump2015">GRUMP 2015<br>
+    <input type="checkbox" name="grump2020" value="grump2020">GRUMP 2020<br>
+</p>
 
-<div id='map'></div>
+<p>5. <strong>Amount of impervious area:</strong><br>
+    <input type="checkbox" name="impervious" value="impervious">Modis Impervious
+</p>
 
-<div id='bokehplot'></div>
+<p>6. <strong>Select info for Daymet data: </strong>
+    <p>6a. <input type="checkbox" name="tmin" value="tmin">tmin<br></p>
+    <p>6b. <input type="checkbox" name="tmax" value="tmax">tmax<br></p>
+    <p>6c. <input type="checkbox" name="diurnal" value="diurnal">diurnal<br></p>
+
+<p>Date Range (YYYY/MM/DD):
+<input type="text" id="startdate" name="startdate" placeholder="1980/01/01">
+<input type="text" id="enddate" name="enddate" placeholder="2015/12/31">
+</p>
+
+<input type="button" id="submitjob" name="submitjob" value="Submit Job" />
+
+</form>
 
 <script type="text/javascript">
-var wmsLayer;
-    $(document).ready(function () {
-
-        var map = L.map('map', {
-            center: [35, -95],
-            zoom: 3
-        });
-
-        var geojson = L.geoJson().addTo(map);
-
-        // http://thredds.daac.ornl.gov/thredds/wms/ornldaac/1328/1980/daymet_v3_tmin_1980_na.nc4?service=WMS&version=1.3.0&request=GetCapabilities
-
-        wmsLayer = L.tileLayer.wms('http://thredds.daac.ornl.gov/thredds/wms/ornldaac/1328/1980/daymet_v3_tmin_1980_na.nc4?', {
-            layers: 'tmin',
-            crs: L.CRS.EPSG4326,
-            format: 'image/png',
-            transparent: true,
-            styles: 'boxfill/redblue',
-            time: '1980-09-11T12:00:00.000Z'
-        }).addTo(map);
-
-        var loading = false;
-
-        var updateOnCity = function(cityval){
-            if (loading){
-                console.log("cool down for calls");
-            }
-            loading = true;
-
-            $.getJSON( "/geturban?id=" + cityval['value'] , function( data ) {
-                geojson.addData(data);
-                map.fitBounds(geojson.getBounds());
-                $.getJSON("/getbokeh?id=" + cityval['value'], function(data){
-                    $("#bokehplot").html("")
-                    $("#bokehplot").append(data['div']);
-                    $("#bokehplot").append(data['script']);
-                    loading = false;
-                });
-                
-            });
-
-            // 
-
-            // Object {text: "Atlanta, Georgia", value: 3917}
-
-            // load city on map in geojson with buffer
-            // 
-        };
+var wmsLayer,selectedItemValue;
+    $(document).ready(function(){
 
         var options = {
             url:  function(phrase) {
@@ -104,8 +86,8 @@ var wmsLayer;
             requestDelay: 300,
             list: {
                 onChooseEvent: function() {
-                    var selectedItemValue = $("#citiesselect").getSelectedItemData();
-                    updateOnCity(selectedItemValue);
+                    selectedItemValue = $("#citiesselect").getSelectedItemData().value;
+                    // updateOnCity(selectedItemValue);
 
                 }
             }
@@ -122,23 +104,45 @@ var wmsLayer;
                                      // alert(date);
                                  }});
 
-        $("#daybefore").click(function(ev){
-            ev.preventDefault();
-            var date2 = $('#datepicker').datepicker('getDate');
-            date2.setDate(date2.getDate()-1);
-            $( "#datepicker" ).datepicker("setDate", date2);
-            $('.ui-datepicker-current-day').click();
-        });
+        // $("#daybefore").click(function(ev){
+        //     ev.preventDefault();
+        //     var date2 = $('#datepicker').datepicker('getDate');
+        //     date2.setDate(date2.getDate()-1);
+        //     $( "#datepicker" ).datepicker("setDate", date2);
+        //     $('.ui-datepicker-current-day').click();
+        // });
 
-        $("#dayafter").click(function(ev){
-            ev.preventDefault();
-            var date2 = $('#datepicker').datepicker('getDate');
-            date2.setDate(date2.getDate()+1);
-            $( "#datepicker" ).datepicker("setDate", date2);
-            $('.ui-datepicker-current-day').click();
-        })
+        // $("#dayafter").click(function(ev){
+        //     ev.preventDefault();
+        //     var date2 = $('#datepicker').datepicker('getDate');
+        //     date2.setDate(date2.getDate()+1);
+        //     $( "#datepicker" ).datepicker("setDate", date2);
+        //     $('.ui-datepicker-current-day').click();
+        // })
 
         $("#datepicker").datepicker("setDate", new Date(1980, 1, 1));
+
+        $("#submitjob").click(function(ev){
+            //data setup
+            var data = {};
+            $("#citydata").serializeArray().map(function(x){data[x.name] = x.value;});
+
+            data['cityvalue'] = selectedItemValue;
+
+            $.ajax({
+              type: "POST",
+              url: "/jobsubmit",
+              data: data,
+              success: function(response){
+                console.log(response);
+
+              },
+              dataType: 'json'
+            });
+
+            ev.preventDefault();
+            return false;
+        })
        
 
     });
