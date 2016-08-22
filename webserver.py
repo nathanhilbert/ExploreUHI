@@ -258,8 +258,6 @@ class ResultViewer(tornado.web.RequestHandler):
 
         umeanfloat = [float(x) for x in resultobj["daymetresults"]["urbanextentresults"]['tmin']['mean']]
         bmeanfloat = [float(x) for x in resultobj["daymetresults"]["bufferextentresults"]['tmin']['mean']]
-        print umeanfloat
-        print bmeanfloat
 
         datearray = []
         for d in resultobj["daymetresults"]['daymetdates']:
@@ -283,9 +281,12 @@ class ResultViewer(tornado.web.RequestHandler):
 
         script, div = components(p1)
 
+        rasterdatastring = json.dumps(resultobj["rasterresults"], indent=4, sort_keys=True).replace("\n", "<br>")
+
 
         self.write({'inputdata':resultrow[1],
                     'geojson':geojson,
+                    'rasterresults': rasterdatastring,
                     'bokeh':{
                         'div': div,
                         'script': script

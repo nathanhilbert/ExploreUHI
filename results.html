@@ -41,6 +41,8 @@
 
 <div id='bokehplot'></div>
 
+<div id='rasterresults'></div>
+
 <script type="text/javascript">
 var wmsLayer;
     $(document).ready(function () {
@@ -102,6 +104,8 @@ var wmsLayer;
                 $("#bokehplot").html("")
                 $("#bokehplot").append(data['bokeh']['div']);
                 $("#bokehplot").append(data['bokeh']['script']);
+
+                $('#rasterresults').html(data['rasterresults']);
                 loading = false;
 
               },
