@@ -50,7 +50,7 @@ def processor(uidata):
 
     appengine = create_engine(APPPOSTGRESURI)
     jobid = randint(0,9999999)
-    sql = """INSERT INTO jobs (id, inputdata) VALUES ({0},'{1}')""".format(jobid, json.dumps(uidata))
+    sql = """INSERT INTO jobs (id, inputdata, status) VALUES ({0},'{1}', 'running')""".format(jobid, json.dumps(uidata))
     appengine.execute(sql)
 
 
@@ -304,7 +304,7 @@ def processor(uidata):
 
 
 
-    sql = """UPDATE jobs SET results='{0}' WHERE id={1}""".format(json.dumps(results), jobid)
+    sql = """UPDATE jobs SET results='{0}', status='complete' WHERE id={1}""".format(json.dumps(results), jobid)
     appengine.execute(sql)
 
 

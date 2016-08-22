@@ -124,6 +124,7 @@ var wmsLayer,selectedItemValue;
 
         $("#submitjob").click(function(ev){
             //data setup
+            $(this).hide();
             var data = {};
             $("#citydata").serializeArray().map(function(x){data[x.name] = x.value;});
 
@@ -134,7 +135,7 @@ var wmsLayer,selectedItemValue;
               url: "/jobsubmit",
               data: data,
               success: function(response){
-                console.log(response);
+                window.location.href = "/jobs";
 
               },
               dataType: 'json'
