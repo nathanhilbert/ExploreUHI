@@ -205,16 +205,19 @@ def processor(uidata):
     STARTDATE = uidata.get('startdate', [''])[0]
     ENDDATE = uidata.get('enddate', [''])[0]
 
-    def get_day_year_from_str(strdate):
-        startdatetup = dateparser(strdate).timetuple()
-        return startdatetup.tm_year, startdatetup.tm_yday
+    starttime = dateparser(STARTDATE)
 
-    if STARTDATE and ENDDATE:
-        startyear, startday = get_day_year_from_str(STARTDATE)
-        endyear, endday = get_day_year_from_str(ENDDATE)
+    numberdays = dateparser(ENDDATE) - starttime
 
-    print startyear, startday
-    print endyear, endday
+    daymetdaterng = pd.date_range(starttime, periods=numberdays.days+1, freq='D')
+
+    # def get_day_year_from_str(strdate):
+    #     startdatetup = dateparser(strdate).timetuple()
+    #     return startdatetup.tm_year, startdatetup.tm_yday
+
+    # if STARTDATE and ENDDATE:
+    #     startyear, startday = get_day_year_from_str(STARTDATE)
+    #     endyear, endday = get_day_year_from_str(ENDDATE)
 
 
     # In[18]:
@@ -268,24 +271,26 @@ def processor(uidata):
     }
 
 
-    # daymet_v3_tmin_1980_1.tif
-    for year in range(startyear, endyear+1):
-        for day in range(startday, endday):
-            print "doing {0},{1}".format(year, day)
-            raster = read_raster(op.join(DAYMETSTORAGE, 'tmin', "daymet_v3_tmin_{0}_{1}.tif".format(year,day)))
-            daymetdates.append("{0}-{1}".format(year,day))
-            result = raster.query(urbanextentgeom).next()
-            urbanextentresults['tmin']['std'].append(float(result.values.std()))
-            urbanextentresults['tmin']['mean'].append(float(result.values.mean()))
-            urbanextentresults['tmin']['min'].append(float(result.values.min()))
-            urbanextentresults['tmin']['max'].append(float(result.values.max()))
-            
-            if bufferextentgeomjson:
-                result = raster.query(bufferextentgeom).next()
-                bufferextentresults['tmin']['std'].append(float(result.values.std()))
-                bufferextentresults['tmin']['mean'].append(float(result.values.mean()))
-                bufferextentresults['tmin']['min'].append(float(result.values.min()))
-                bufferextentresults['tmin']['max'].append(float(result.values.max()))
+    for daymetdate in daymetdaterng:
+        daymettimetuple = daymetdate.timetuple()
+        year = daymettimetuple.tm_year
+        day = daymettimetuple.tm_yday
+
+        print "doing {0},{1}".format(year, day)
+        raster = read_raster(op.join(DAYMETSTORAGE, 'tmin', "daymet_v3_tmin_{0}_{1}.tif".format(year,day)))
+        daymetdates.append("{0}-{1}".format(year,day))
+        result = raster.query(urbanextentgeom).next()
+        urbanextentresults['tmin']['std'].append(float(result.values.std()))
+        urbanextentresults['tmin']['mean'].append(float(result.values.mean()))
+        urbanextentresults['tmin']['min'].append(float(result.values.min()))
+        urbanextentresults['tmin']['max'].append(float(result.values.max()))
+        
+        if bufferextentgeomjson:
+            result = raster.query(bufferextentgeom).next()
+            bufferextentresults['tmin']['std'].append(float(result.values.std()))
+            bufferextentresults['tmin']['mean'].append(float(result.values.mean()))
+            bufferextentresults['tmin']['min'].append(float(result.values.min()))
+            bufferextentresults['tmin']['max'].append(float(result.values.max()))
 
     results = {}
     results['rasterresults'] = rasterresults
