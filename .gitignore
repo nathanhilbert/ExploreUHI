@@ -1,4 +1,3 @@
 .DS_Store
-bower_components
 *.pyc
 npm-debug.log
