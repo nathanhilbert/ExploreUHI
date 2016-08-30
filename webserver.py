@@ -18,9 +18,6 @@ from sqlalchemy import create_engine
 from dateutil.parser import parse as dateparser
 from datetime import timedelta, datetime
 
-
-import psycopg2
-
 import json
 
 from time import time
@@ -31,7 +28,8 @@ import urllib
 
 from dataprocessors import processor
 
-
+APPPOSTGRESURI = os.environ.get("HIPOSTGRESAPP", 'postgresql://urbis:urbis@localhost:5432/urbisapp')
+POSTGRESURI = os.environ.get("HIPOSTGRES", 'postgresql://urbis:urbis@localhost:5432/urbis')
 
 class IndexHandler(tornado.web.RequestHandler):
     """Regular HTTP handler to serve the ping page"""
@@ -48,7 +46,6 @@ class JobSubmit(tornado.web.RequestHandler):
     def post(self):
         theargs = self.request.arguments
         processor.apply_async(args=(theargs,))
-        print theargs
         # print self.get_body_argument("data")
         # mydata = self.get_arguments("data")
         self.write(theargs)
@@ -58,38 +55,38 @@ class JobSubmit(tornado.web.RequestHandler):
 class SearchCitiesHandler(tornado.web.RequestHandler):
     def get(self):
         q = self.get_argument('term') 
-        q = "%%" + q.lower() + "%%"
-        db = psycopg2.connect(dbname="urbis", user="postgres", password="postgres", host="localhost")
-        cursor = db.cursor()
-        cursor.execute("""
-            SELECT placeid, label FROM urbanclusters.cityoptions WHERE LOWER(label) LIKE %s LIMIT 20""", (q,))
+        q = q.lower()
+        appengine = create_engine(POSTGRESURI)
+
+        rowresult = appengine.execute("""
+            SELECT placeid, label FROM urbanclusters.cityoptions WHERE LOWER(label) LIKE '%%{0}%%' LIMIT 20""".format(q))
 
         result = {'data': []}
-        for r in cursor:
+        for r in rowresult:
             result['data'].append({'value': r[0], 'text': r[1]})
             # result[r[1]] = r[0]
-        cursor.close()
+        # cursor.close()
         self.write(result) 
 
 
 class GetUrbanGeojson(tornado.web.RequestHandler):
     def get(self):
         q = self.get_argument('id') 
-        db = psycopg2.connect(dbname="urbis", user="postgres", password="postgres", host="localhost")
-        cursor = db.cursor()
-        cursor.execute("""SELECT 
+        appengine = create_engine(POSTGRESURI)
+
+        rowresult = appengine.execute("""SELECT 
           neurban.id, 
           ST_AsGeoJSON(neurban.geom) as urban,
           ST_AsGeoJSON(ST_Difference(ST_Buffer(neurban.geom, sqrt(St_Area(neurban.geom)/pi())), neurban.geom)) as buffer
         FROM 
           public.natearth_urbanareas_10m as neurban
-        WHERE neurban.id=%s LIMIT 1;""", (int(q),))
+        WHERE neurban.id={0} LIMIT 1;""".format(int(q)))
 
         template =   { "type": "FeatureCollection",
                     "features": [
                        ]
                      }
-        obj = cursor.next()
+        obj = rowresult.next()
         urbangeo = json.loads(obj[1])
         urbangeo['properties'] = {
             'id': obj[0],
@@ -107,7 +104,7 @@ class GetUrbanGeojson(tornado.web.RequestHandler):
 
 
         self.write(template)
-        cursor.close()
+        # cursor.close()
         # result = {'data': []}
         # for r in cursor:
         #     result['data'].append({'value': r[0], 'text': r[1]})
@@ -120,9 +117,9 @@ class GetBokeh(tornado.web.RequestHandler):
     """docstring for ClassName"""
     def get(self):
         q = self.get_argument('id') 
-        db = psycopg2.connect(dbname="urbis", user="postgres", password="postgres", host="localhost")
-        cursor = db.cursor()
-        cursor.execute("""SELECT 
+        appengine = create_engine(POSTGRESURI)
+
+        rowresult = appengine.execute("""SELECT 
           urbanareas_daymet.id, 
           urbanareas_daymet.placename, 
           urbanareas_daymet.urbanmean, 
@@ -137,7 +134,7 @@ class GetBokeh(tornado.web.RequestHandler):
           urbanareas_daymet.urbid
         FROM 
           public.urbanareas_daymet
-        WHERE urbid=%s AND datatype='tmin' ORDER BY year,day""", (int(q),))
+        WHERE urbid={0} AND datatype='tmin' ORDER BY year,day""".format(int(q)))
         xdata = []
         uydata = []
         bydata = []
@@ -149,7 +146,7 @@ class GetBokeh(tornado.web.RequestHandler):
 
         firstdataday = dateparser("1980-01-01")
         counter = 0
-        for r in cursor:
+        for r in rowresult:
             cityname = r[1]
             xdata.append(firstdataday + timedelta(days=counter))
             counter +=1
@@ -204,11 +201,8 @@ class JobsViewer(tornado.web.RequestHandler):
     def get(self):
         self.render('jobs.html')
     def post(self):
-
-        APPPOSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbisapp'
-
         appengine = create_engine(APPPOSTGRESURI)
-        sql = """SELECT id, status, starttime, endtime FROM jobs"""
+        sql = """SELECT id, status, starttime, endtime FROM heatislandui.jobs"""
         result = appengine.execute(sql)
         setresult = []
         for r in result:
@@ -225,10 +219,8 @@ class ResultViewer(tornado.web.RequestHandler):
     def post(self):
         jobid = self.get_argument('jobid') 
 
-        APPPOSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbisapp'
-
         appengine = create_engine(APPPOSTGRESURI)
-        sql = """SELECT id, inputdata, results  FROM jobs WHERE id={0}""".format(jobid)
+        sql = """SELECT id, inputdata, results  FROM heatislandui.jobs WHERE id={0}""".format(jobid)
         result = appengine.execute(sql)
         resultrow = result.first()
         resultobj = resultrow[2]
@@ -298,6 +290,9 @@ class ResultViewer(tornado.web.RequestHandler):
 if __name__ == "__main__":
     import logging
     logging.getLogger().setLevel(logging.DEBUG)
+
+    APPPOSTGRESURI = os.environ.get("HIPOSTGRESAPP", 'postgresql://urbis:urbis@localhost:5432/urbisapp')
+    POSTGRESURI = os.environ.get("HIPOSTGRES", 'postgresql://urbis:urbis@localhost:5432/urbis')
 
     # Create application
     app = tornado.web.Application(

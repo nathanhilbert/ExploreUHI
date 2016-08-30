@@ -25,7 +25,7 @@ from celery import Celery
 app = Celery('dataprocessors', broker='redis://localhost:6379/0')
 
 
-
+import os
 from sqlalchemy import create_engine
 from shapely import wkb
 from pyspatial.vector import from_series
@@ -41,16 +41,17 @@ from random import randint
 @app.task
 def processor(uidata):
 
+    print "DOING THIS"
+
     # In[2]:
 
-    POSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbis'
+    POSTGRESURI = os.environ.get("HIPOSTGRES", 'postgresql://urbis:urbis@localhost:5432/urbis')
+
+    APPPOSTGRESURI = os.environ.get("HIPOSTGRESAPP", 'postgresql://urbis:urbis@localhost:5432/urbisapp')
     
-
-    APPPOSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbisapp'
-
     appengine = create_engine(APPPOSTGRESURI)
     jobid = randint(0,9999999)
-    sql = """INSERT INTO jobs (id, inputdata, status, starttime) VALUES ({0},'{1}', 'running', now())""".format(jobid, json.dumps(uidata))
+    sql = """INSERT INTO heatislandui.jobs (id, inputdata, status, starttime) VALUES ({0},'{1}', 'running', now())""".format(jobid, json.dumps(uidata))
     appengine.execute(sql)
 
 
@@ -79,7 +80,7 @@ def processor(uidata):
 
 
 
-        BASERASTERPATH = '/data/rasterstorage'
+        BASERASTERPATH = os.environ.get("HIRASTERBASE", '/data/rasterstorage')
 
         RASTERSETS = {'grump2000': 'grump/population2000.json', 
                       'grump2005': 'grump/population2005.json', 
@@ -93,7 +94,7 @@ def processor(uidata):
         #              'nlcd/impervious/nlcd_impervious_2006.json',
                      
 
-        DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
+        DAYMETSTORAGE = os.environ.get("HIDAYMET", '/Volumes/UrbisBackup/rasterstorage/daymet')
         DAYMETVALS = ['tmin','tmax']
 
 
@@ -224,7 +225,7 @@ def processor(uidata):
 
 
 
-        DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
+        DAYMETSTORAGE = os.environ.get("HIDAYMET", '/Volumes/UrbisBackup/rasterstorage/daymet')
         DAYMETVALS = ['tmin','tmax', 'diurnal']
         # daymetpath = '/Users/nlh/sharedata/rasterstorage/daymet/tmin'
         daymetdates = []
@@ -314,12 +315,12 @@ def processor(uidata):
 
 
 
-        sql = """UPDATE jobs SET results='{0}', status='complete', endtime=now() WHERE id={1}""".format(json.dumps(results), jobid)
+        sql = """UPDATE heatislandui.jobs SET results='{0}', status='complete', endtime=now() WHERE id={1}""".format(json.dumps(results), jobid)
         appengine.execute(sql)
     except Exception,e:
         print "ERROR:"
         print e
-        sql = """UPDATE jobs SET status='error' WHERE id={0}""".format(jobid)
+        sql = """UPDATE heatislandui.jobs SET status='error' WHERE id={0}""".format(jobid)
         appengine.execute(sql)
 
 
