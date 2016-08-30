@@ -45,6 +45,7 @@ class DaymetMap(tornado.web.RequestHandler):
 class JobSubmit(tornado.web.RequestHandler):
     def post(self):
         theargs = self.request.arguments
+        print theargs
         processor.apply_async(args=(theargs,))
         # print self.get_body_argument("data")
         # mydata = self.get_arguments("data")
@@ -63,7 +64,7 @@ class SearchCitiesHandler(tornado.web.RequestHandler):
 
         result = {'data': []}
         for r in rowresult:
-            result['data'].append({'value': r[0], 'text': r[1]})
+            result['data'].append({'id': r[0], 'text': r[1]})
             # result[r[1]] = r[0]
         # cursor.close()
         self.write(result) 

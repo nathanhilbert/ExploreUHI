@@ -11,7 +11,7 @@
 #           'impervious': ['impervious'], 
 #           'diurnal': ['diurnal'], 
 #           'tmax': ['tmax'], 
-#           'cityvalue': '24283', 
+#           'cityvalue': ['24283', '54322'], 
 #           'landscanpopulation': ['landscanpopulation'], 
 #           'citiesselect': ['Cleveland, Tennessee'], 
 #           'extentbuffer': ['1'], 

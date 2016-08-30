@@ -13,3 +13,10 @@ $ python webserver.py
 
 ```
 
+
+On ontoserv
+---------------------
+mount ontodar
+run redis-server
+init pyenv && runcelery.sh
+init pyenv && runserver.sh

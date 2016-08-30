@@ -18,6 +18,9 @@
 
     <link rel="stylesheet" href="bower_components/EasyAutocomplete/dist/easy-autocomplete.min.css" />
 
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.3/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.3/js/select2.js"></script>
+
 
     <style>
         #map {
@@ -29,8 +32,17 @@
 </head>
 <body>
 
+
+
 <form id="citydata" name="citydata">
-<p>1. <strong>Select City:</strong> <input type="text" plcaeholder="Cleveland, TN" name="citiesselect" id="citiesselect"/></p>
+
+
+
+
+
+<p>1. <strong>Select City:</strong> <select data-placeholder="Choose a country..." style="width:350px;" multiple class="chosen-select"><option>1</option></select>
+
+</p>
 <p>
     2. <strong>Buffer: </strong>
     <p>As percentage of urban area: <input placeholder=".35" type="number" name="extentbuffer" id="extentbuffer" /></p>
@@ -128,7 +140,7 @@ var wmsLayer,selectedItemValue;
             var data = {};
             $("#citydata").serializeArray().map(function(x){data[x.name] = x.value;});
 
-            data['cityvalue'] = selectedItemValue;
+            data['cityvalue'] = $(".chosen-select").select2("val");
 
             $.ajax({
               type: "POST",
@@ -144,6 +156,31 @@ var wmsLayer,selectedItemValue;
             ev.preventDefault();
             return false;
         })
+
+
+          $(".chosen-select").select2({
+              ajax: {
+                url: function (params) {
+                  return "searchcities?term=" + params.term;
+                },
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                  return {
+                    q: params.term
+                  };
+                },
+                processResults: function (data, params) {
+                  return {
+                    results: data['data']
+                  };
+                }
+              },
+              // escapeMarkup: function (markup) { return markup; }, // let our custom formatter work
+              minimumInputLength: 2
+              // templateResult: formatRepo, // omitted for brevity, see the source of this page
+              // templateSelection: formatRepoSelection // omitted for brevity, see the source of this page
+            });
        
 
     });
