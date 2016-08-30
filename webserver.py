@@ -208,11 +208,11 @@ class JobsViewer(tornado.web.RequestHandler):
         APPPOSTGRESURI = 'postgresql://urbis:urbis@localhost:5432/urbisapp'
 
         appengine = create_engine(APPPOSTGRESURI)
-        sql = """SELECT id, status FROM jobs"""
+        sql = """SELECT id, status, starttime, endtime FROM jobs"""
         result = appengine.execute(sql)
         setresult = []
         for r in result:
-            setresult.append({'id':r[0], 'status':r[1]})
+            setresult.append({'id':r[0], 'status':r[1], 'starttime':str(r[2]), 'endtime':str(r[3])})
         self.write({'data':setresult})
 
 

@@ -42,7 +42,7 @@
           success: function(response){
             $("#jobslist").html("");
             $.each(response['data'], function(k,v){
-                var lines = "<p><a href='/job?jobid=" + v['id'] + "'>" + v['id'] + "-" + v['status'] + "</a></p>"
+                var lines = "<p><a href='/job?jobid=" + v['id'] + "'>" + v['id'] + " - " + v['status'] + " - " + v['starttime'] + " - " + v['endtime'] + "</a></p>"
                 $("#jobslist").append(lines);
             });
 

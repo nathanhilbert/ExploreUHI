@@ -50,267 +50,278 @@ def processor(uidata):
 
     appengine = create_engine(APPPOSTGRESURI)
     jobid = randint(0,9999999)
-    sql = """INSERT INTO jobs (id, inputdata, status) VALUES ({0},'{1}', 'running')""".format(jobid, json.dumps(uidata))
+    sql = """INSERT INTO jobs (id, inputdata, status, starttime) VALUES ({0},'{1}', 'running', now())""".format(jobid, json.dumps(uidata))
     appengine.execute(sql)
 
 
+    try:
+
+
+        engine = create_engine(POSTGRESURI)
+
+        sql = "SELECT placeid, label FROM urbanclusters.cityoptions WHERE placeid = {0}".format(uidata['cityvalue'][0])
+        results = engine.execute(sql)
+        placeid, label = results.first()
+        print "Looking at {0} with id {1}".format(label, placeid)
+
+
+        # In[3]:
+
+        #set up the datasets required
+
+        EXTENTTABLES = {'landscan':'urbanclusters.landscan_urbannamed',
+             'grump':'urbanclusters.grump_urbannamed',
+            'naturalearth':'urbanclusters.ne_10m_urbannamed'
+            }
+        urbanextenttable = EXTENTTABLES.get(uidata['cityvalue'][0], 'urbanclusters.landscan_urbannamed')
+                
+                
 
 
 
-    engine = create_engine(POSTGRESURI)
+        BASERASTERPATH = '/data/rasterstorage'
 
-    sql = "SELECT placeid, label FROM urbanclusters.cityoptions WHERE placeid = {0}".format(uidata['cityvalue'][0])
-    results = engine.execute(sql)
-    placeid, label = results.first()
-    print "Looking at {0} with id {1}".format(label, placeid)
+        RASTERSETS = {'grump2000': 'grump/population2000.json', 
+                      'grump2005': 'grump/population2005.json', 
+                      'grump2010': 'grump/population2010.json',
+                      'grump2015': 'grump/population2015.json',
+                      'grump2020': 'grump/population2020.json',
+                      'landscanpopulation': 'landscan/landscan.json',
+                      'impervious': 'nlcd/impervious/nlcd_impervious_2011.json'
+                      }
+        #               'nlcd/impervious/nlcd_impervious_2001.json',
+        #              'nlcd/impervious/nlcd_impervious_2006.json',
+                     
 
-
-    # In[3]:
-
-    #set up the datasets required
-
-    EXTENTTABLES = {'landscan':'urbanclusters.landscan_urbannamed',
-         'grump':'urbanclusters.grump_urbannamed',
-        'naturalearth':'urbanclusters.ne_10m_urbannamed'
-        }
-    urbanextenttable = EXTENTTABLES.get(uidata['cityvalue'][0], 'urbanclusters.landscan_urbannamed')
-            
-            
+        DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
+        DAYMETVALS = ['tmin','tmax']
 
 
-
-    BASERASTERPATH = '/data/rasterstorage'
-
-    RASTERSETS = {'grump2000': 'grump/population2000.json', 
-                  'grump2005': 'grump/population2005.json', 
-                  'grump2010': 'grump/population2010.json',
-                  'grump2015': 'grump/population2015.json',
-                  'grump2020': 'grump/population2020.json',
-                  'landscanpopulation': 'landscan/landscan.json',
-                  'impervious': 'nlcd/impervious/nlcd_impervious_2011.json'
-                  }
-    #               'nlcd/impervious/nlcd_impervious_2001.json',
-    #              'nlcd/impervious/nlcd_impervious_2006.json',
-                 
-
-    DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
-    DAYMETVALS = ['tmin','tmax']
-
-
-    # In[4]:
+        # In[4]:
 
 
 
-    def get_geom_from_postgis(tablename, placeid):
+        def get_geom_from_postgis(tablename, placeid):
 
-        conn = engine.connect()
-        sql = """
-        SELECT ST_AsEWKB(geom), ST_AsGeoJson(geom) AS geom FROM {0}
-        WHERE placeid={1}
-        """.format(tablename, placeid)
-        result = conn.execute(sql)
-        row = result.first()
-        conn.close()
-        return wkb.loads(str(row[0])), row[1] 
-
-    def get_geom_from_postgis_buffer(tablename, placeid, value, fixed=False):
-
-        conn = engine.connect()
-        if fixed:
+            conn = engine.connect()
             sql = """
+            SELECT ST_AsEWKB(geom), ST_AsGeoJson(geom) AS geom FROM {0}
+            WHERE placeid={1}
+            """.format(tablename, placeid)
+            result = conn.execute(sql)
+            row = result.first()
+            conn.close()
+            return wkb.loads(str(row[0])), row[1] 
+
+        def get_geom_from_postgis_buffer(tablename, placeid, value, fixed=False):
+
+            conn = engine.connect()
+            if fixed:
+                sql = """
+                    SELECT ST_AsEWKB(ST_Difference(
+                        ST_Buffer(geom, {0})
+                        , geom)) AS geom,
+                        ST_AsGeoJson(ST_Difference(
+                        ST_Buffer(geom, {1})
+                        , geom)) AS geom
+                        FROM {2}
+                    WHERE placeid={3}
+                    """.format(value, value, tablename, placeid)
+            else:
+                sql = """
                 SELECT ST_AsEWKB(ST_Difference(
-                    ST_Buffer(geom, {0})
+                    ST_Buffer(geom, (sqrt(St_Area(geom)/pi())* {0}))
                     , geom)) AS geom,
                     ST_AsGeoJson(ST_Difference(
-                    ST_Buffer(geom, {1})
+                    ST_Buffer(geom, (sqrt(St_Area(geom)/pi())* {1}))
                     , geom)) AS geom
                     FROM {2}
                 WHERE placeid={3}
-                """.format(value, value, tablename, placeid)
-        else:
-            sql = """
-            SELECT ST_AsEWKB(ST_Difference(
-                ST_Buffer(geom, (sqrt(St_Area(geom)/pi())* {0}))
-                , geom)) AS geom,
-                ST_AsGeoJson(ST_Difference(
-                ST_Buffer(geom, (sqrt(St_Area(geom)/pi())* {1}))
-                , geom)) AS geom
-                FROM {2}
-            WHERE placeid={3}
-        """.format(value, value, tablename, placeid)
-        result = conn.execute(sql)
-        row = result.first()
-        conn.close()
-        return wkb.loads(str(row[0])), row[1] 
+            """.format(value, value, tablename, placeid)
+            result = conn.execute(sql)
+            row = result.first()
+            conn.close()
+            return wkb.loads(str(row[0])), row[1] 
 
 
 
-    results = get_geom_from_postgis(urbanextenttable, placeid)
-    urbanextentgeom = from_series(pd.Series([results[0]]))
-    urbanextentgeomjson = results[1]
+        results = get_geom_from_postgis(urbanextenttable, placeid)
+        urbanextentgeom = from_series(pd.Series([results[0]]))
+        urbanextentgeomjson = results[1]
 
 
-    bufferextentgeom = None
-    bufferextentgeomjson = None
-    if uidata['extentbuffer']:
-        results = get_geom_from_postgis_buffer(urbanextenttable, placeid, float(uidata['extentbuffer'][0]))
-        bufferextentgeom = from_series(pd.Series([results[0]]))
-        bufferextentgeomjson = results[1]
-    elif uidata['fixedbuffer']:
-        results = get_geom_from_postgis_buffer(urbanextenttable, placeid, int(uidata['fixedbuffer'][0]), True)
-        bufferextentgeom = from_series(pd.Series([results[0]]))
-        bufferextentgeomjson = results[1]
-        
-
+        bufferextentgeom = None
+        bufferextentgeomjson = None
+        if uidata['extentbuffer']:
+            results = get_geom_from_postgis_buffer(urbanextenttable, placeid, float(uidata['extentbuffer'][0]))
+            bufferextentgeom = from_series(pd.Series([results[0]]))
+            bufferextentgeomjson = results[1]
+        elif uidata['fixedbuffer']:
+            results = get_geom_from_postgis_buffer(urbanextenttable, placeid, int(uidata['fixedbuffer'][0]), True)
+            bufferextentgeom = from_series(pd.Series([results[0]]))
+            bufferextentgeomjson = results[1]
             
 
-
-    # In[11]:
-
-
-    rasterresults = {}
+                
 
 
-    print bufferextentgeom
-    for rasterkey in RASTERSETS.keys():
-        if uidata.get(rasterkey, None):
-            try:
-                tempr = read_catalog(op.join(BASERASTERPATH, RASTERSETS[rasterkey]))
-                rasterresults[rasterkey] = {}
-                result = tempr.query(urbanextentgeom).next()
-                rasterresults[rasterkey]['urbanextent'] = {
-                    'sum': float(result.values.sum()),
-                    'mean': float(result.values.mean()),
-                    'weightedmean': float((result.values * result.weights).sum() / result.weights.sum()),
-                    'std': float(result.values.std())
-                    }
-                if bufferextentgeomjson:
-                    result = tempr.query(bufferextentgeom).next()
-                    rasterresults[rasterkey]['bufferextent'] = {
+        # In[11]:
+
+
+        rasterresults = {}
+
+
+        print bufferextentgeom
+        for rasterkey in RASTERSETS.keys():
+            if uidata.get(rasterkey, None):
+                try:
+                    tempr = read_catalog(op.join(BASERASTERPATH, RASTERSETS[rasterkey]))
+                    rasterresults[rasterkey] = {}
+                    result = tempr.query(urbanextentgeom).next()
+                    rasterresults[rasterkey]['urbanextent'] = {
                         'sum': float(result.values.sum()),
                         'mean': float(result.values.mean()),
                         'weightedmean': float((result.values * result.weights).sum() / result.weights.sum()),
                         'std': float(result.values.std())
                         }
-            except Exception,e:
-                traceback.print_exc()
-                print e
-                
-                pass
+                    if bufferextentgeomjson:
+                        result = tempr.query(bufferextentgeom).next()
+                        rasterresults[rasterkey]['bufferextent'] = {
+                            'sum': float(result.values.sum()),
+                            'mean': float(result.values.mean()),
+                            'weightedmean': float((result.values * result.weights).sum() / result.weights.sum()),
+                            'std': float(result.values.std())
+                            }
+                except Exception,e:
+                    traceback.print_exc()
+                    print e
+                    
+                    pass
 
 
-    # In[13]:
+        # In[13]:
 
-    
-    STARTDATE = uidata.get('startdate', [''])[0]
-    ENDDATE = uidata.get('enddate', [''])[0]
-
-    starttime = dateparser(STARTDATE)
-
-    numberdays = dateparser(ENDDATE) - starttime
-
-    daymetdaterng = pd.date_range(starttime, periods=numberdays.days+1, freq='D')
-
-    # def get_day_year_from_str(strdate):
-    #     startdatetup = dateparser(strdate).timetuple()
-    #     return startdatetup.tm_year, startdatetup.tm_yday
-
-    # if STARTDATE and ENDDATE:
-    #     startyear, startday = get_day_year_from_str(STARTDATE)
-    #     endyear, endday = get_day_year_from_str(ENDDATE)
-
-
-    # In[18]:
-
-
-
-    DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
-    DAYMETVALS = ['tmin','tmax', 'diurnal']
-    # daymetpath = '/Users/nlh/sharedata/rasterstorage/daymet/tmin'
-    daymetdates = []
-    urbanextentresults = {
-        'tmin':{
-            'std':[],
-            'mean':[],
-            'min':[],
-            'max':[]
-        },
-        'tmax':{
-            'std':[],
-            'mean':[],
-            'min':[],
-            'max':[]
-        },
-        'diurnal':{
-            'std':[],
-            'mean':[],
-            'min':[],
-            'max':[]
-        }
-    }
-
-    bufferextentresults = {
-        'tmin':{
-            'std':[],
-            'mean':[],
-            'min':[],
-            'max':[]
-        },
-        'tmax':{
-            'std':[],
-            'mean':[],
-            'min':[],
-            'max':[]
-        },
-        'diurnal':{
-            'std':[],
-            'mean':[],
-            'min':[],
-            'max':[]
-        }
-    }
-
-
-    for daymetdate in daymetdaterng:
-        daymettimetuple = daymetdate.timetuple()
-        year = daymettimetuple.tm_year
-        day = daymettimetuple.tm_yday
-
-        print "doing {0},{1}".format(year, day)
-        raster = read_raster(op.join(DAYMETSTORAGE, 'tmin', "daymet_v3_tmin_{0}_{1}.tif".format(year,day)))
-        daymetdates.append("{0}-{1}".format(year,day))
-        result = raster.query(urbanextentgeom).next()
-        urbanextentresults['tmin']['std'].append(float(result.values.std()))
-        urbanextentresults['tmin']['mean'].append(float(result.values.mean()))
-        urbanextentresults['tmin']['min'].append(float(result.values.min()))
-        urbanextentresults['tmin']['max'].append(float(result.values.max()))
         
-        if bufferextentgeomjson:
-            result = raster.query(bufferextentgeom).next()
-            bufferextentresults['tmin']['std'].append(float(result.values.std()))
-            bufferextentresults['tmin']['mean'].append(float(result.values.mean()))
-            bufferextentresults['tmin']['min'].append(float(result.values.min()))
-            bufferextentresults['tmin']['max'].append(float(result.values.max()))
+        STARTDATE = uidata.get('startdate', [''])[0]
+        ENDDATE = uidata.get('enddate', [''])[0]
 
-    results = {}
-    results['rasterresults'] = rasterresults
+        starttime = dateparser(STARTDATE)
 
-    results['daymetresults'] = {
-        'daymetdates': daymetdates,
-        'urbanextentresults': urbanextentresults,
-        'bufferextentresults': bufferextentresults
-    }
-    results['info'] = {
-        'label': label,
-        'placeid': placeid,
-        'urbangeom': urbanextentgeomjson,
-        'buffergeom': bufferextentgeomjson
-    }
+        numberdays = dateparser(ENDDATE) - starttime
+
+        daymetdaterng = pd.date_range(starttime, periods=numberdays.days+1, freq='D')
+
+        # def get_day_year_from_str(strdate):
+        #     startdatetup = dateparser(strdate).timetuple()
+        #     return startdatetup.tm_year, startdatetup.tm_yday
+
+        # if STARTDATE and ENDDATE:
+        #     startyear, startday = get_day_year_from_str(STARTDATE)
+        #     endyear, endday = get_day_year_from_str(ENDDATE)
+
+
+        # In[18]:
 
 
 
-    sql = """UPDATE jobs SET results='{0}', status='complete' WHERE id={1}""".format(json.dumps(results), jobid)
-    appengine.execute(sql)
+        DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
+        DAYMETVALS = ['tmin','tmax', 'diurnal']
+        # daymetpath = '/Users/nlh/sharedata/rasterstorage/daymet/tmin'
+        daymetdates = []
+        urbanextentresults = {
+            'tmin':{
+                'std':[],
+                'mean':[],
+                'min':[],
+                'max':[]
+            },
+            'tmax':{
+                'std':[],
+                'mean':[],
+                'min':[],
+                'max':[]
+            },
+            'diurnal':{
+                'std':[],
+                'mean':[],
+                'min':[],
+                'max':[]
+            }
+        }
+
+        bufferextentresults = {
+            'tmin':{
+                'std':[],
+                'mean':[],
+                'min':[],
+                'max':[]
+            },
+            'tmax':{
+                'std':[],
+                'mean':[],
+                'min':[],
+                'max':[]
+            },
+            'diurnal':{
+                'std':[],
+                'mean':[],
+                'min':[],
+                'max':[]
+            }
+        }
+
+
+        for daymetdate in daymetdaterng:
+            daymettimetuple = daymetdate.timetuple()
+            year = daymettimetuple.tm_year
+            day = daymettimetuple.tm_yday
+
+            print "doing {0},{1}".format(year, day)
+            try:
+                raster = read_raster(op.join(DAYMETSTORAGE, 'tmin', "daymet_v3_tmin_{0}_{1}.tif".format(year,day)))
+            except Exception,e:
+                print e
+                print "daymet_v3_tmin_{0}_{1}.tif Does not exist in the file system".format(year,day)
+                continue
+            daymetdates.append("{0}-{1}".format(year,day))
+            result = raster.query(urbanextentgeom).next()
+            urbanextentresults['tmin']['std'].append(float(result.values.std()))
+            urbanextentresults['tmin']['mean'].append(float(result.values.mean()))
+            urbanextentresults['tmin']['min'].append(float(result.values.min()))
+            urbanextentresults['tmin']['max'].append(float(result.values.max()))
+            
+            if bufferextentgeomjson:
+                result = raster.query(bufferextentgeom).next()
+                bufferextentresults['tmin']['std'].append(float(result.values.std()))
+                bufferextentresults['tmin']['mean'].append(float(result.values.mean()))
+                bufferextentresults['tmin']['min'].append(float(result.values.min()))
+                bufferextentresults['tmin']['max'].append(float(result.values.max()))
+
+        results = {}
+        results['rasterresults'] = rasterresults
+
+        results['daymetresults'] = {
+            'daymetdates': daymetdates,
+            'urbanextentresults': urbanextentresults,
+            'bufferextentresults': bufferextentresults
+        }
+        results['info'] = {
+            'label': label,
+            'placeid': placeid,
+            'urbangeom': urbanextentgeomjson,
+            'buffergeom': bufferextentgeomjson
+        }
+
+
+
+        sql = """UPDATE jobs SET results='{0}', status='complete', endtime=now() WHERE id={1}""".format(json.dumps(results), jobid)
+        appengine.execute(sql)
+    except Exception,e:
+        print "ERROR:"
+        print e
+        sql = """UPDATE jobs SET status='error' WHERE id={0}""".format(jobid)
+        appengine.execute(sql)
+
 
 
     # In[ ]:
