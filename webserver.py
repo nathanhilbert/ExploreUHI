@@ -200,6 +200,106 @@ class GetBokeh(tornado.web.RequestHandler):
             'div': div,
             'script': script
             })
+
+
+from osgeo import gdal, gdalnumeric, ogr, osr
+from PIL import Image, ImageDraw
+import os, sys
+import os.path as op
+from pyproj import Proj, transform
+def clipper(raster_file, bbox):
+    DAYMETSTORAGE = '/Volumes/UrbisBackup/rasterstorage/daymet'
+    measure = 'tmin'
+
+    def world2Pixel(geoMatrix, x, y):
+      """
+      Uses a gdal geomatrix (gdal.GetGeoTransform()) to calculate
+      the pixel location of a geospatial coordinate
+      """
+      ulX = geoMatrix[0]
+      ulY = geoMatrix[3]
+      xDist = geoMatrix[1]
+      yDist = geoMatrix[5]
+      rtnX = geoMatrix[2]
+      rtnY = geoMatrix[4]
+      pixel = int((x - ulX) / xDist)
+      line = int((ulY - y) / xDist)
+      return (pixel, line)
+
+    # Also load as a gdal image to get geotransform
+    # (world file) info
+    raster_path = op.join(DAYMETSTORAGE, measure, \
+                                 raster_file)
+    srcArray = gdalnumeric.LoadFile(raster_path)
+
+    srcImage = gdal.Open(raster_path)
+    geoTrans = srcImage.GetGeoTransform()
+
+
+    # Convert the layer extent to image pixel coordinates
+    tminX, tmaxX, tminY, tmaxY = bbox
+
+    outProj = Proj(init='epsg:3857')
+    inProj = Proj(init='epsg:4326')
+
+    minX,minY = transform(inProj,outProj,tminX,tminY)
+    maxX,maxY = transform(inProj,outProj,tmaxX,tmaxY)
+
+
+
+    ulX, ulY = world2Pixel(geoTrans, minX, maxY)
+    lrX, lrY = world2Pixel(geoTrans, maxX, minY)
+
+    # Calculate the pixel size of the new image
+    pxWidth = int(lrX - ulX)
+    pxHeight = int(lrY - ulY)
+
+
+    clip = srcArray[ulY:lrY, ulX:lrX]
+    img = Image.new('RGBA',(len(clip), len(clip[0])))
+
+
+    minval= np.min(clip)
+    maxval= np.max(clip)
+
+    newarray = np.uint8((clip/np.max(clip)) * 255)
+    # inverted_im = Image.fromarray(newarray, mode='L')
+
+    rgbArray = np.zeros((len(clip), len(clip[0]),3), 'uint8')
+
+    minimum, maximum = float(np.min(clip)), float(np.max(clip))
+    ratio = (clip - minimum) / (maximum-minimum)
+    print ratio
+    b = 255*(1 - ratio)
+    r = 255*(ratio - 1)
+    # g = 255 - abs(b - r)
+    rgbArray[..., 0] = r
+    # rgbArray[..., 1] = g
+    rgbArray[..., 2] = b
+
+    img2 = Image.fromarray(rgbArray)
+    return img2
+
+from StringIO import StringIO
+
+class TileViewer(tornado.web.RequestHandler):
+    def get(self):
+
+        q = self.get_argument('bbox')
+        dater = dateparser(self.get_argument('daymetdate'))
+        daymettimetuple = dater.timetuple()
+        year = daymettimetuple.tm_year
+        day = daymettimetuple.tm_yday
+        raster_filename = "daymet_v3_{0}_{1}_{2}.tif".format('tmin', year,day)
+
+        bboxarray = q.split(",")
+        self.set_header("Content-Type", 'image/png')
+        img = clipper(raster_filename, bboxarray)
+        zdata = StringIO()
+
+        img.save(zdata, 'PNG')
+        self.write(zdata.getvalue())
+        self.finish()
         
 
 class JobsViewer(tornado.web.RequestHandler):
@@ -331,7 +431,7 @@ if __name__ == "__main__":
             (r"/jobsubmit", JobSubmit),
             (r"/jobs", JobsViewer),
             (r"/job", ResultViewer),
-            # (r"/geturban", GetUrbanGeojson),
+            (r"/tiler", TileViewer),
             (r"/getbokeh", GetBokeh),
             (r'/bower_components/(.*)', tornado.web.StaticFileHandler, {'path': os.path.join(os.path.dirname(__file__), "bower_components"),}),]
         )
