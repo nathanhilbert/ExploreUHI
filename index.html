@@ -52,6 +52,8 @@
                           <option value="grump">GRUMP</option>
                           <option value="landscan">Landscan</option>
                           <option value="naturalearth">Natural Earth</option>
+                          <option value="globcover">GlobalCover</option>
+                          <option value="earthenv">Earth Env</option>
                         </select>
 </p>
 
@@ -65,14 +67,15 @@
     <input type="checkbox" name="grump2020" value="grump2020">GRUMP 2020<br>
 </p>
 
-<p>5. <strong>Amount of impervious area:</strong><br>
+<p>5. <strong>NLCD:</strong><br>
     <input type="checkbox" name="impervious" value="impervious">Modis Impervious
+    <input type="checkbox" name="nlcd" value="nlcd">Land Cover Database Coverage
 </p>
 
 <p>6. <strong>Select info for Daymet data: </strong>
     <p>6a. <input type="checkbox" name="tmin" value="tmin">tmin<br></p>
     <p>6b. <input type="checkbox" name="tmax" value="tmax">tmax<br></p>
-    <p>6c. <input type="checkbox" name="diurnal" value="diurnal">diurnal<br></p>
+    <!-- <p>6c. <input type="checkbox" name="diurnal" value="diurnal">diurnal<br></p> -->
 
 <p>Date Range (YYYY/MM/DD):
 <input type="text" id="startdate" name="startdate" placeholder="1980/01/01">
@@ -87,25 +90,25 @@
 var wmsLayer,selectedItemValue;
     $(document).ready(function(){
 
-        var options = {
-            url:  function(phrase) {
-                return "searchcities?term=" + phrase ;
-            },
+        // var options = {
+        //     url:  function(phrase) {
+        //         return "searchcities?term=" + phrase ;
+        //     },
 
-            getValue: 'text',
-            listLocation: "data",
+        //     getValue: 'text',
+        //     listLocation: "data",
 
-            requestDelay: 300,
-            list: {
-                onChooseEvent: function() {
-                    selectedItemValue = $("#citiesselect").getSelectedItemData().value;
-                    // updateOnCity(selectedItemValue);
+        //     requestDelay: 300,
+        //     list: {
+        //         onChooseEvent: function() {
+        //             selectedItemValue = $("#citiesselect").getSelectedItemData().value;
+        //             // updateOnCity(selectedItemValue);
 
-                }
-            }
-        };
+        //         }
+        //     }
+        // };
 
-        $("#citiesselect").easyAutocomplete(options);
+        // $("#citiesselect").easyAutocomplete(options);
 
 
       $( "#datepicker" ).datepicker({ minDate: new Date(1980, 1, 1), maxDate: new Date(2015, 12, 31),

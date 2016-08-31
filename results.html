@@ -102,8 +102,12 @@ var wmsLayer;
                 map.fitBounds(geojson.getBounds());
 
                 $("#bokehplot").html("")
-                $("#bokehplot").append(data['bokeh']['div']);
-                $("#bokehplot").append(data['bokeh']['script']);
+                $.each(data['bokeh'], function(k,v){
+                    $("#bokehplot").append("<div id='bokehplot" + k + "'></div>")
+                    $("#bokehplot" + k).append(v['div']);
+                    $("#bokehplot" + k).append(v['script']);
+                });
+
 
                 $('#rasterresults').html(data['rasterresults']);
                 loading = false;

@@ -14,6 +14,8 @@ from bokeh.plotting import figure
 from bokeh.embed import components
 from sqlalchemy import create_engine
 
+import numpy as np
+
 
 from dateutil.parser import parse as dateparser
 from datetime import timedelta, datetime
@@ -25,6 +27,10 @@ from time import time
 # from sockjs.tornado import SockJSConnection, SockJSRouter, proto
 
 import urllib
+
+
+import random
+
 
 from dataprocessors import processor
 
@@ -70,48 +76,48 @@ class SearchCitiesHandler(tornado.web.RequestHandler):
         self.write(result) 
 
 
-class GetUrbanGeojson(tornado.web.RequestHandler):
-    def get(self):
-        q = self.get_argument('id') 
-        appengine = create_engine(POSTGRESURI)
+# class GetUrbanGeojson(tornado.web.RequestHandler):
+#     def get(self):
+#         q = self.get_argument('id') 
+#         appengine = create_engine(POSTGRESURI)
 
-        rowresult = appengine.execute("""SELECT 
-          neurban.id, 
-          ST_AsGeoJSON(neurban.geom) as urban,
-          ST_AsGeoJSON(ST_Difference(ST_Buffer(neurban.geom, sqrt(St_Area(neurban.geom)/pi())), neurban.geom)) as buffer
-        FROM 
-          public.natearth_urbanareas_10m as neurban
-        WHERE neurban.id={0} LIMIT 1;""".format(int(q)))
+#         rowresult = appengine.execute("""SELECT 
+#           neurban.id, 
+#           ST_AsGeoJSON(neurban.geom) as urban,
+#           ST_AsGeoJSON(ST_Difference(ST_Buffer(neurban.geom, sqrt(St_Area(neurban.geom)/pi())), neurban.geom)) as buffer
+#         FROM 
+#           public.natearth_urbanareas_10m as neurban
+#         WHERE neurban.id={0} LIMIT 1;""".format(int(q)))
 
-        template =   { "type": "FeatureCollection",
-                    "features": [
-                       ]
-                     }
-        obj = rowresult.next()
-        urbangeo = json.loads(obj[1])
-        urbangeo['properties'] = {
-            'id': obj[0],
-            'urbanmean': 7.34,
-            'type': 'urban'
-        }
-        buffergeo = json.loads(obj[2])
-        buffergeo['properties'] = {
-            'id': obj[0],
-            'buffermean': 5.65,
-            'type': 'buffer'
-        }
-        template['features'].append(urbangeo)
-        template['features'].append(buffergeo)
+#         template =   { "type": "FeatureCollection",
+#                     "features": [
+#                        ]
+#                      }
+#         obj = rowresult.next()
+#         urbangeo = json.loads(obj[1])
+#         urbangeo['properties'] = {
+#             'id': obj[0],
+#             'urbanmean': 7.34,
+#             'type': 'urban'
+#         }
+#         buffergeo = json.loads(obj[2])
+#         buffergeo['properties'] = {
+#             'id': obj[0],
+#             'buffermean': 5.65,
+#             'type': 'buffer'
+#         }
+#         template['features'].append(urbangeo)
+#         template['features'].append(buffergeo)
 
 
-        self.write(template)
-        # cursor.close()
-        # result = {'data': []}
-        # for r in cursor:
-        #     result['data'].append({'value': r[0], 'text': r[1]})
-        #     # result[r[1]] = r[0]
-        # cursor.close()
-        # self.write(result) 
+#         self.write(template)
+#         # cursor.close()
+#         # result = {'data': []}
+#         # for r in cursor:
+#         #     result['data'].append({'value': r[0], 'text': r[1]})
+#         #     # result[r[1]] = r[0]
+#         # cursor.close()
+#         # self.write(result) 
 
 
 class GetBokeh(tornado.web.RequestHandler):
@@ -217,6 +223,7 @@ class ResultViewer(tornado.web.RequestHandler):
     """docstring for ClassName"""
     def get(self):
         self.render('results.html')
+
     def post(self):
         jobid = self.get_argument('jobid') 
 
@@ -228,11 +235,13 @@ class ResultViewer(tornado.web.RequestHandler):
         # resultobj = json.loads(resultrow[2])
         # print resultobj
 
+        features = []
+        for placeresult in resultobj.values():
+            features.append(json.loads(placeresult['results']['info']['urbangeom']))
+            features.append(json.loads(placeresult['results']['info']['buffergeom']))
+
         geojson =   { "type": "FeatureCollection",
-            "features": [
-                json.loads(resultobj['info']['urbangeom']),
-                json.loads(resultobj['info']['buffergeom'])
-               ],
+            "features": features,
                 'crs': {
                   'type': 'name',
                   'properties': {
@@ -241,49 +250,68 @@ class ResultViewer(tornado.web.RequestHandler):
                   }
              }
 
+        tempp = resultobj.values()[0]
 
-        p1 = figure(title="TempMin", 
-                 x_axis_type="datetime",
-                  plot_width=1200, 
-                  plot_height=500)
-        p1.xaxis.axis_label = 'Date'
-        p1.yaxis.axis_label = 'MinDailyTemp'
-
-        umeanfloat = [float(x) for x in resultobj["daymetresults"]["urbanextentresults"]['tmin']['mean']]
-        bmeanfloat = [float(x) for x in resultobj["daymetresults"]["bufferextentresults"]['tmin']['mean']]
-
-        datearray = []
-        for d in resultobj["daymetresults"]['daymetdates']:
-            ds = d.split("-")
-            datearray.append(datetime(int(ds[0]), 1, 1) + timedelta(int(ds[1]) - 1))
+        bokehvizes = []
 
 
-        p1.line(datearray, umeanfloat , color='#A6CEE3', legend='Urban')
-        p1.line(datearray, bmeanfloat ,color='#B2DF8A', legend='Buffer')
-        # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmax, 0.2, 0.01, line_color="black")
-        # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmin, 0.2, 0.01, line_color="black")
-        # p1.segment(xdata, ustdmax, xdata, uydata, line_width=2, line_color="black")
-        # p1.segment(xdata, ustdmin, xdata, uydata, line_width=2, line_color="black")
-        # p1.line(datetime(IBM['date']), IBM['adj_close'], color='#33A02C', legend='IBM')
-        # p1.line(datetime(MSFT['date']), MSFT['adj_close'], color='#FB9A99', legend='MSFT')
+        tempdaymetresults = tempp['results']['daymetresults']
+        for measure in tempdaymetresults['results'].keys():
 
-        p1.legend.location = "top_left"
+            p1 = figure(title=measure, 
+                     x_axis_type="datetime",
+                      plot_width=1200, 
+                      plot_height=500)
+            p1.xaxis.axis_label = 'Date'
+            p1.yaxis.axis_label = 'DiffDailyTemp'
 
-        # output_notebook()
+            datearray = []
+            for d in tempdaymetresults['daymetdates']:
+                ds = d.split("-")
+                datearray.append(datetime(int(ds[0]), 1, 1) + timedelta(int(ds[1]) - 1))
 
 
-        script, div = components(p1)
+            for placeresult in resultobj.values():
+                daymetresults = placeresult['results']['daymetresults']
 
-        rasterdatastring = json.dumps(resultobj["rasterresults"], indent=4, sort_keys=True).replace("\n", "<br>")
+                umeanfloat = [float(x) for x in daymetresults['results'][measure]["urbanextentresults"]['mean']]
+                bmeanfloat = [float(x) for x in daymetresults['results'][measure]["bufferextentresults"]['mean']]
+
+                uhivalue = np.array(umeanfloat) - np.array(bmeanfloat)
+
+                r = lambda: random.randint(0,255)
+                randomcolor = '#%02X%02X%02X' % (r(),r(),r())
+                p1.line(datearray, uhivalue , color=randomcolor, legend=placeresult['label'])
+                # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmax, 0.2, 0.01, line_color="black")
+                # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmin, 0.2, 0.01, line_color="black")
+                # p1.segment(xdata, ustdmax, xdata, uydata, line_width=2, line_color="black")
+                # p1.segment(xdata, ustdmin, xdata, uydata, line_width=2, line_color="black")
+                # p1.line(datetime(IBM['date']), IBM['adj_close'], color='#33A02C', legend='IBM')
+                # p1.line(datetime(MSFT['date']), MSFT['adj_close'], color='#FB9A99', legend='MSFT')
+
+            p1.legend.location = "top_left"
+
+            script, div = components(p1)
+
+            bokehvizes.append({
+                'script': script,
+                'div': div
+                })
+
+        rasterdatastring = ""
+        for placeresult in resultobj.values():
+            rasterdatastring += "<h5>" + placeresult['label'] + "</h5><br/>" + \
+                "<h5>Urban Area: " + str(placeresult['results']['info']['urbanarea']) + "</h5><br/>" + \
+                "<h5>Buffer Area: " + str(placeresult['results']['info']['bufferarea']) + "</h5><br/>" +\
+            json.dumps(placeresult['results']["rasterresults"], indent=4, sort_keys=True)\
+            .replace("\n", "<br>").replace('\r', '&nbsp;&nbsp;')
 
 
         self.write({'inputdata':resultrow[1],
                     'geojson':geojson,
                     'rasterresults': rasterdatastring,
-                    'bokeh':{
-                        'div': div,
-                        'script': script
-                    }})
+                    'bokeh':bokehvizes
+                    })
 
 
 
@@ -303,7 +331,7 @@ if __name__ == "__main__":
             (r"/jobsubmit", JobSubmit),
             (r"/jobs", JobsViewer),
             (r"/job", ResultViewer),
-            (r"/geturban", GetUrbanGeojson),
+            # (r"/geturban", GetUrbanGeojson),
             (r"/getbokeh", GetBokeh),
             (r'/bower_components/(.*)', tornado.web.StaticFileHandler, {'path': os.path.join(os.path.dirname(__file__), "bower_components"),}),]
         )
