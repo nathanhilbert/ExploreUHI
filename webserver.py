@@ -59,6 +59,19 @@ class JobSubmit(tornado.web.RequestHandler):
     def get(self):
         self.write({"jobs": {}})
 
+class JobReSubmit(tornado.web.RequestHandler):
+    def post(self):
+        jobid = self.get_argument('jobid')
+        appengine = create_engine(APPPOSTGRESURI)
+        sql = """SELECT inputdata FROM heatislandui.jobs WHERE id={0}""".format(jobid)
+        rowresult = appengine.execute(sql)
+        for r in rowresult:
+            inputdata = r[0]
+            break
+        processor.apply_async(args=(inputdata,jobid,))
+        self.write("success")
+
+
 class SearchCitiesHandler(tornado.web.RequestHandler):
     def get(self):
         q = self.get_argument('term') 
@@ -350,13 +363,15 @@ class ResultViewer(tornado.web.RequestHandler):
                   }
              }
 
+        #get a temp first place value to find rasterkeys
         tempp = resultobj.values()[0]
 
         bokehvizes = []
+        #result types for the temporal rasters
+        rastertypes = [x for x in tempp['results'].keys() if x in ('prismresults', 'daymetresults',)]
+        measurekeys = [x for x in tempp['results'][rastertypes[0]]['results'].keys()]
 
-
-        tempdaymetresults = tempp['results']['daymetresults']
-        for measure in tempdaymetresults['results'].keys():
+        for measure in tempp['results'][rastertypes[0]]['results'].keys():
 
             p1 = figure(title=measure, 
                      x_axis_type="datetime",
@@ -366,22 +381,36 @@ class ResultViewer(tornado.web.RequestHandler):
             p1.yaxis.axis_label = 'DiffDailyTemp'
 
             datearray = []
-            for d in tempdaymetresults['daymetdates']:
+            for d in tempp['results'][rastertypes[0]]['dates']:
                 ds = d.split("-")
                 datearray.append(datetime(int(ds[0]), 1, 1) + timedelta(int(ds[1]) - 1))
 
 
             for placeresult in resultobj.values():
                 daymetresults = placeresult['results']['daymetresults']
+                prismresults = placeresult['results']['prismresults']
 
                 umeanfloat = [float(x) for x in daymetresults['results'][measure]["urbanextentresults"]['mean']]
                 bmeanfloat = [float(x) for x in daymetresults['results'][measure]["bufferextentresults"]['mean']]
 
-                uhivalue = np.array(umeanfloat) - np.array(bmeanfloat)
+                uhivaluedaymet = np.array(umeanfloat) - np.array(bmeanfloat)
+
+                try:
+
+                    umeanfloat = [float(x) for x in prismresults['results']["prism" + measure]["urbanextentresults"]['mean']]
+                    bmeanfloat = [float(x) for x in prismresults['results']["prism" + measure]["bufferextentresults"]['mean']]
+
+                    uhivalueprism = np.array(umeanfloat) - np.array(bmeanfloat)
+                except:
+                    uhivalueprism = None
+
 
                 r = lambda: random.randint(0,255)
                 randomcolor = '#%02X%02X%02X' % (r(),r(),r())
-                p1.line(datearray, uhivalue , color=randomcolor, legend=placeresult['label'])
+                p1.line(datearray, uhivaluedaymet , color=randomcolor, legend=placeresult['label'] + "-daymet")
+                if uhivalueprism != None:
+                    randomcolor = '#%02X%02X%02X' % (r(),r(),r())
+                    p1.line(datearray, uhivalueprism , color=randomcolor, legend=placeresult['label'] + "-prism")
                 # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmax, 0.2, 0.01, line_color="black")
                 # p1.rect(resultobj["daymetresults"]['daymetdates'], ustdmin, 0.2, 0.01, line_color="black")
                 # p1.segment(xdata, ustdmax, xdata, uydata, line_width=2, line_color="black")
@@ -429,6 +458,7 @@ if __name__ == "__main__":
             (r"/daymetmap", DaymetMap),
             (r"/searchcities", SearchCitiesHandler),
             (r"/jobsubmit", JobSubmit),
+            (r"/jobresubmit", JobReSubmit),
             (r"/jobs", JobsViewer),
             (r"/job", ResultViewer),
             (r"/tiler", TileViewer),

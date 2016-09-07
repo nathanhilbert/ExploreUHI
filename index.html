@@ -49,8 +49,8 @@
     <p>As fixed distance for all (meters): <input placeholder="5000" type="number" name="fixedbuffer" id="fixedbuffer" /></p>
 </p>
 <p>3. <strong>Urban Definition:</strong> <select id="urbandef" name="urbandef">
-                          <option value="grump">GRUMP</option>
                           <option value="landscan">Landscan</option>
+                          <option value="grump">GRUMP</option>
                           <option value="naturalearth">Natural Earth</option>
                           <option value="globcover">GlobalCover</option>
                           <option value="earthenv">Earth Env</option>
@@ -72,15 +72,24 @@
     <input type="checkbox" name="nlcd" value="nlcd">Land Cover Database Coverage
 </p>
 
-<p>6. <strong>Select info for Daymet data: </strong>
-    <p>6a. <input type="checkbox" name="tmin" value="tmin">tmin<br></p>
-    <p>6b. <input type="checkbox" name="tmax" value="tmax">tmax<br></p>
-    <!-- <p>6c. <input type="checkbox" name="diurnal" value="diurnal">diurnal<br></p> -->
-
 <p>Date Range (YYYY/MM/DD):
 <input type="text" id="startdate" name="startdate" placeholder="1980/01/01">
 <input type="text" id="enddate" name="enddate" placeholder="2015/12/31">
 </p>
+
+<p>6. <strong>Select info for Daymet data: </strong>
+    <p>6a. <input type="checkbox" name="tmin" value="tmin">tmin<br></p>
+    <p>6b. <input type="checkbox" name="tmax" value="tmax">tmax<br></p>
+    <!-- <p>6c. <input type="checkbox" name="diurnal" value="diurnal">diurnal<br></p> -->
+</p>
+
+<p>7. <strong>Select info for Prism data: </strong>
+    <p>7a. <input type="checkbox" name="prismtmin" value="prismtmin">tmin<br></p>
+    <p>7b. <input type="checkbox" name="prismtmax" value="prismtmax">tmax<br></p>
+    <!-- <p>6c. <input type="checkbox" name="diurnal" value="diurnal">diurnal<br></p> -->
+</p>
+
+
 
 <input type="button" id="submitjob" name="submitjob" value="Submit Job" />
 

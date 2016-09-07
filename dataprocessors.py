@@ -39,7 +39,7 @@ from dateutil.parser import parse as dateparser
 from random import randint
 
 @app.task
-def processor(uidata):
+def processor(uidata, jobid=None):
 
     print "DOING THIS"
 
@@ -50,8 +50,11 @@ def processor(uidata):
     APPPOSTGRESURI = os.environ.get("HIPOSTGRESAPP", 'postgresql://urbis:urbis@localhost:5432/urbisapp')
     
     appengine = create_engine(APPPOSTGRESURI)
-    jobid = randint(0,9999999)
-    sql = """INSERT INTO heatislandui.jobs (id, inputdata, status, starttime) VALUES ({0},'{1}', 'running', now())""".format(jobid, json.dumps(uidata))
+    if not jobid:
+        jobid = randint(0,9999999)
+        sql = """INSERT INTO heatislandui.jobs (id, inputdata, status, starttime) VALUES ({0},'{1}', 'running', now())""".format(jobid, json.dumps(uidata))
+    else:
+        sql = """UPDATE heatislandui.jobs SET status='running' WHERE id={0}""".format(jobid)
     appengine.execute(sql)
 
 
@@ -126,6 +129,92 @@ def processor(uidata):
             row = result.first()
             conn.close()
             return wkb.loads(str(row[0])), row[1], row[2] 
+
+
+        def calctimeseriesrasters(measure, daterng, 
+                                    basedirectory, urbanextentgeom, 
+                                    bufferextentgeom, rastername='daymet'):
+            tempresult = {}
+            returndates = []
+
+            urbanextentresults = {
+                    'std':[],
+                    'mean':[],
+                    'min':[],
+                    'max':[]
+            }
+
+            bufferextentresults = {
+                    'std':[],
+                    'mean':[],
+                    'min':[],
+                    'max':[]
+            }
+
+
+            for daymetdate in daterng:
+                if rastername == 'daymet':
+                    daymettimetuple = daymetdate.timetuple()
+                    year = daymettimetuple.tm_year
+                    yday = daymettimetuple.tm_yday
+
+                    daymetfilename = "daymet_v3_{0}_{1}_{2}.tif".format(measure, year,yday)
+
+                    print "doing {0},{1}".format(year, yday)
+                    try:
+                        raster = read_raster(op.join(basedirectory, measure, daymetfilename))
+                    except Exception,e:
+                        print e
+                        traceback.print_exc()
+                        print "{0} Does not exist in the file system".format(daymetfilename)
+                        continue
+                    returndates.append("{0}-{1}".format(year,yday))
+                elif rastername == 'prism':
+                    daymettimetuple = daymetdate.timetuple()
+                    day = daymetdate.day 
+                    month = daymetdate.month
+                    year = daymettimetuple.tm_year
+                    yday = daymettimetuple.tm_yday
+
+                    prismfilename = "(PRISM_{measure}_stable_4kmD1_{year}{month}{day}_bil).tif"\
+                                                     .format(measure = measure.strip('prism'),
+                                                            year = year,
+                                                            month = str(month).zfill(2),
+                                                            day = str(day).zfill(2))
+
+                    print "doing prism {0},{1}".format(year, day)
+                    print op.join(basedirectory, prismfilename)
+                    try:
+                        raster = read_raster(op.join(basedirectory, prismfilename))
+                    except Exception,e:
+                        print e
+                        traceback.print_exc()
+                        print prismfilename
+                        continue
+                    returndates.append("{0}-{1}".format(year,yday))
+                else:
+                    raise "Raster source not found for {0}".format(rastername)
+                result = raster.query(urbanextentgeom).next()
+
+                urbanextentresults['std'].append(float(result.values.std()))
+                urbanextentresults['mean'].append(float(result.values.mean()))
+                urbanextentresults['min'].append(float(result.values.min()))
+                urbanextentresults['max'].append(float(result.values.max()))
+
+
+                result = raster.query(bufferextentgeom).next()
+                bufferextentresults['std'].append(float(result.values.std()))
+                bufferextentresults['mean'].append(float(result.values.mean()))
+                bufferextentresults['min'].append(float(result.values.min()))
+                bufferextentresults['max'].append(float(result.values.max()))
+            tempresult = {
+                'urbanextentresults': urbanextentresults,
+                'bufferextentresults': bufferextentresults
+            }
+
+            return returndates, tempresult
+
+
         
         def processplace(placeid, urbanextenttable, uidata):
             BASERASTERPATH = os.environ.get("HIRASTERBASE", '/data/rasterstorage')
@@ -141,10 +230,6 @@ def processor(uidata):
                           }
             #               'nlcd/impervious/nlcd_impervious_2001.json',
             #              'nlcd/impervious/nlcd_impervious_2006.json',
-
-
-            DAYMETSTORAGE = os.environ.get("HIDAYMET", '/Volumes/UrbisBackup/rasterstorage/daymet')
-            DAYMETVALS = ['tmin','tmax']
 
             
             results = get_geom_from_postgis(urbanextenttable, placeid)
@@ -214,81 +299,56 @@ def processor(uidata):
 
             numberdays = dateparser(ENDDATE) - starttime
 
-            daymetdaterng = pd.date_range(starttime, periods=numberdays.days+1, freq='D')
+            daterng = pd.date_range(starttime, periods=numberdays.days+1, freq='D')
 
-            # def get_day_year_from_str(strdate):
-            #     startdatetup = dateparser(strdate).timetuple()
-            #     return startdatetup.tm_year, startdatetup.tm_yday
-
-            # if STARTDATE and ENDDATE:
-            #     startyear, startday = get_day_year_from_str(STARTDATE)
-            #     endyear, endday = get_day_year_from_str(ENDDATE)
 
 
             # In[18]:
-            DAYMETSTORAGE = os.environ.get("HIDAYMET", '/Volumes/UrbisBackup/rasterstorage/daymet')
-            DAYMETVALS = ['tmin','tmax']
+            HIGHVOLUMESTORAGE = os.environ.get("HIVOLUMESTORAGE", '/Volumes/UrbisBackup/rasterstorage')
+            DAYMETSTORAGE = op.join(HIGHVOLUMESTORAGE, 'daymet')
+            PRISMSTORAGE = op.join(HIGHVOLUMESTORAGE, 'prism')
+            UIVALS = ('tmin','tmax', 'prismtmin', 'prismtmax',)
             # daymetpath = '/Users/nlh/sharedata/rasterstorage/daymet/tmin'
-            daymetdates = []
 
             
-            daymetresults = {}
-            for measure in DAYMETVALS:
-                urbanextentresults = {
-                        'std':[],
-                        'mean':[],
-                        'min':[],
-                        'max':[]
-                }
-
-                bufferextentresults = {
-                        'std':[],
-                        'mean':[],
-                        'min':[],
-                        'max':[]
-                }
-
-                if not uidata.get(measure, False):
-                    continue
-                for daymetdate in daymetdaterng:
-                    daymettimetuple = daymetdate.timetuple()
-                    year = daymettimetuple.tm_year
-                    day = daymettimetuple.tm_yday
-
-                    print "doing {0},{1}".format(year, day)
-                    try:
-                        raster = read_raster(op.join(DAYMETSTORAGE, measure, \
-                                                     "daymet_v3_{0}_{1}_{2}.tif".format(measure, year,day)))
-                    except Exception,e:
-                        print e
-                        print "daymet_v3_{0}_{1}_{2}.tif Does not exist in the file system".format(measure,year,day)
-                        continue
-                    daymetdates.append("{0}-{1}".format(year,day))
-                    result = raster.query(urbanextentgeom).next()
-
-                    urbanextentresults['std'].append(float(result.values.std()))
-                    urbanextentresults['mean'].append(float(result.values.mean()))
-                    urbanextentresults['min'].append(float(result.values.min()))
-                    urbanextentresults['max'].append(float(result.values.max()))
-
-                    if bufferextentgeomjson:
-                        result = raster.query(bufferextentgeom).next()
-                        bufferextentresults['std'].append(float(result.values.std()))
-                        bufferextentresults['mean'].append(float(result.values.mean()))
-                        bufferextentresults['min'].append(float(result.values.min()))
-                        bufferextentresults['max'].append(float(result.values.max()))
-                daymetresults[measure] = {
-                    'urbanextentresults': urbanextentresults,
-                    'bufferextentresults': bufferextentresults
-                }
-
             results = {}
             results['rasterresults'] = rasterresults
 
-            results['daymetresults'] = {
-                'daymetdates': daymetdates,
-                'results': daymetresults
-            }
+            for measure in UIVALS:
+                if not uidata.get(measure, False):
+                    continue
+                if measure.find('prism') == -1:
+                    daymetdates, returnresults = calctimeseriesrasters(measure, daterng, 
+                                        DAYMETSTORAGE, urbanextentgeom, 
+                                        bufferextentgeom, rastername='daymet')
+                    if 'daymetresults' in results.keys():
+                        results['daymetresults']['results'][measure] = returnresults
+                    else:
+                        results['daymetresults'] = {
+                            'dates': daymetdates,
+                            'results':{
+                                measure: returnresults
+                            }
+                        }
+
+
+                else:
+                    daymetdates, returnresults = calctimeseriesrasters(measure, daterng, 
+                                        PRISMSTORAGE, urbanextentgeom, 
+                                        bufferextentgeom, rastername='prism')
+                    if len(daymetdates) < 1:
+                        continue
+                    if 'prismresults' in results.keys():
+                        results['prismresults']['results'][measure] = returnresults
+                    else:
+                        results['prismresults'] = {
+                            'dates': daymetdates,
+                            'results':{
+                                measure: returnresults
+                            }
+                        }
+
+
             results['info'] = {
                 'placeid': placeid,
                 'urbangeom': urbanextentgeomjson,
@@ -314,6 +374,7 @@ def processor(uidata):
     except Exception,e:
         print "ERROR:"
         print e
+        traceback.print_exc()
         sql = """UPDATE heatislandui.jobs SET status='error' WHERE id={0}""".format(jobid)
         appengine.execute(sql)
 

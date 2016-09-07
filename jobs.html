@@ -42,8 +42,21 @@
           success: function(response){
             $("#jobslist").html("");
             $.each(response['data'], function(k,v){
-                var lines = "<p><a href='/job?jobid=" + v['id'] + "'>" + v['id'] + " - " + v['status'] + " - " + v['starttime'] + " - " + v['endtime'] + "</a></p>"
+                var lines = "<p><a href='/job?jobid=" + v['id'] + "'>" + v['id'] + " - " + v['status'] + " - " + v['starttime'] + " - " + v['endtime'] + "</a> - <span style='cursor:pointer' name='" + v['id'] + "' id='" + v['id']+ "'>Rerun</span></p>"
                 $("#jobslist").append(lines);
+                $("#" + v['id']).click(function(ev){
+                  var jobid = $(this).attr('name')
+                  var mybutton = $(this);
+                  $(this).hide();
+                  $.ajax({
+                    type: "POST",
+                    url: "/jobresubmit",
+                    data:{'jobid':jobid},
+                    success: function(data){
+                      mybutton.show().html("Success");
+                    }
+                  })
+                });
             });
 
           },
